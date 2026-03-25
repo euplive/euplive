@@ -62,7 +62,25 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshots/home.png",
+      "src": "/screenshots/1-home.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshots/2-alarm.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshots/3-meditate.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshots/4-stats.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow"
