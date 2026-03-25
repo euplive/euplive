@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+:root {
+  --background: #16213e;
+  --foreground: #f0f0f0;
+  --primary: #1a1a2e;
+  --accent: #f5a623;
+  --success: #4ecdc4;
+  --warning: #ff6b6b;
+  --card: #1e2a4a;
+  --border: #2a3a5c;
+  --text-secondary: #8892a4;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+/* 呼吸动画 */
+@keyframes breathe-in {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.5); opacity: 1; }
+}
+
+@keyframes breathe-out {
+  0% { transform: scale(1.5); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.6; }
+}
+
+.animate-breathe-in {
+  animation: breathe-in 4s ease-in-out forwards;
+}
+
+.animate-breathe-out {
+  animation: breathe-out 8s ease-in-out forwards;
+}
