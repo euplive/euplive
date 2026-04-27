@@ -254,7 +254,7 @@ export default function PomodoroPage() {
   const progress = ((totalTime - timeLeft) / totalTime) * 100;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <h1 className="text-xl font-bold text-center">⏰ Eup钟</h1>
 
       {/* 模式选择 */}
