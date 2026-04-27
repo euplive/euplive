@@ -5,6 +5,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 type TimerMode = 'focus' | 'shortBreak' | 'longBreak';
 type TimerStatus = 'idle' | 'running' | 'paused';
 
+type MusicMode = 'none' | 'meditation' | 'nature';
+
 interface PomodoroSettings {
   focusDuration: number; // 分钟
   shortBreakDuration: number;
@@ -31,6 +33,20 @@ export default function PomodoroPage() {
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+
+  // 加载冥想音乐
+  useEffect(() => {
+    musicRef.current = new Audio('/audio/meditation-rest-now.mp3');
+    musicRef.current.loop = true;
+    musicRef.current.volume = 0.5;
+    return () => {
+      if (musicRef.current) {
+        musicRef.current.pause();
+        musicRef.current = null;
+      }
+    };
+  }, []);
 
   // 加载设置
   useEffect(() => {
@@ -154,13 +170,19 @@ export default function PomodoroPage() {
       if (newSessions % settings.longBreakInterval === 0) {
         setMode('longBreak');
         setTimeLeft(settings.longBreakDuration * 60);
-        // 长休息时提醒冥想
+        // 长休息时提醒冥想，并播放冥想音乐
         sendNotification('🧘 长休息时间到', '15分钟冥想，放松身心');
+        if (musicRef.current) {
+          musicRef.current.play().catch(() => {});
+        }
       } else {
         setMode('shortBreak');
         setTimeLeft(settings.shortBreakDuration * 60);
-        // 短休息时提醒提肛
+        // 短休息时提醒提肛，暂停冥想音乐
         sendNotification('🎯 短休息时间到', '5分钟提肛运动，保持健康');
+        if (musicRef.current) {
+          musicRef.current.pause();
+        }
       }
     } else {
       // 休息结束，切换到专注
@@ -168,6 +190,10 @@ export default function PomodoroPage() {
       setTimeLeft(settings.focusDuration * 60);
       playNotificationSound();
       sendNotification('⏰ 休息结束', '35分钟专注时间，开始工作吧！');
+      // 停止冥想音乐
+      if (musicRef.current) {
+        musicRef.current.pause();
+      }
     }
   };
 
