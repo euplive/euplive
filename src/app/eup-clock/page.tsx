@@ -41,6 +41,9 @@ export default function PomodoroPage() {
     musicRef.current = new Audio('/audio/meditation-rest-now.mp3');
     musicRef.current.loop = true;
     musicRef.current.volume = 0.5;
+    musicRef.current.onerror = () => {
+      console.error('音频加载失败');
+    };
     return () => {
       if (musicRef.current) {
         musicRef.current.pause();
@@ -390,6 +393,21 @@ export default function PomodoroPage() {
               />
             </button>
           </div>
+
+          {/* 测试音乐按钮 */}
+          <button
+            onClick={() => {
+              if (musicRef.current) {
+                musicRef.current.currentTime = 0;
+                musicRef.current.play().catch((e) => {
+                  alert('播放失败: ' + e.message);
+                });
+              }
+            }}
+            className="w-full mt-2 py-2 rounded-lg bg-[#4ecdc4]/20 text-sm text-[#4ecdc4]"
+          >
+            🔊 测试播放冥想音乐
+          </button>
 
           <div className="flex items-center justify-between">
             <span className="text-sm">专注时长</span>
