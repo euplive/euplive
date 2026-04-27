@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 
 const navItems = [
   { href: '/', label: '首页', icon: '🏠' },
-  { href: '/pomodoro', label: '番茄钟', icon: '🍅' },
+  { href: '/eup-clock', label: 'Eup钟', icon: '⏰' },
   { href: '/water', label: '喝水', icon: '💧' },
   { href: '/stats', label: '统计', icon: '📊' },
   { href: '/settings', label: '设置', icon: '⚙️' },

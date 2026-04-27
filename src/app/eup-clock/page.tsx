@@ -14,17 +14,17 @@ interface PomodoroSettings {
 }
 
 const DEFAULT_SETTINGS: PomodoroSettings = {
-  focusDuration: 25,
+  focusDuration: 35,
   shortBreakDuration: 5,
   longBreakDuration: 15,
   longBreakInterval: 4,
-  dailyGoal: 8,
+  dailyGoal: 6,
 };
 
 export default function PomodoroPage() {
   const [mode, setMode] = useState<TimerMode>('focus');
   const [status, setStatus] = useState<TimerStatus>('idle');
-  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [timeLeft, setTimeLeft] = useState(35 * 60);
   const [sessionsCompleted, setSessionsCompleted] = useState(0);
   const [todaySessions, setTodaySessions] = useState(0);
   const [settings, setSettings] = useState<PomodoroSettings>(DEFAULT_SETTINGS);
@@ -34,14 +34,14 @@ export default function PomodoroPage() {
 
   // 加载设置
   useEffect(() => {
-    const saved = localStorage.getItem('pomodoro-settings');
+    const saved = localStorage.getItem('eup-clock-settings');
     if (saved) {
       setSettings(JSON.parse(saved));
     }
 
     // 加载今日完成数
     const today = new Date().toISOString().slice(0, 10);
-    const savedToday = localStorage.getItem(`pomodoro-today-${today}`);
+    const savedToday = localStorage.getItem(`eup-clock-today-${today}`);
     if (savedToday) {
       setTodaySessions(parseInt(savedToday));
     }
@@ -50,7 +50,7 @@ export default function PomodoroPage() {
   // 保存设置
   const saveSettings = (newSettings: PomodoroSettings) => {
     setSettings(newSettings);
-    localStorage.setItem('pomodoro-settings', JSON.stringify(newSettings));
+    localStorage.setItem('eup-clock-settings', JSON.stringify(newSettings));
   };
 
   // 获取当前时长
@@ -135,7 +135,7 @@ export default function PomodoroPage() {
       const today = new Date().toISOString().slice(0, 10);
       const newTodaySessions = todaySessions + 1;
       setTodaySessions(newTodaySessions);
-      localStorage.setItem(`pomodoro-today-${today}`, newTodaySessions.toString());
+      localStorage.setItem(`eup-clock-today-${today}`, newTodaySessions.toString());
 
       // 自动切换到休息
       if (newSessions % settings.longBreakInterval === 0) {
@@ -198,7 +198,7 @@ export default function PomodoroPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-center">🍅 番茄钟</h1>
+      <h1 className="text-xl font-bold text-center">⏰ Eup钟</h1>
 
       {/* 模式选择 */}
       <div className="flex rounded-xl bg-[#1e2a4a] p-1">
@@ -327,7 +327,7 @@ export default function PomodoroPage() {
               onChange={(e) => saveSettings({ ...settings, focusDuration: parseInt(e.target.value) })}
               className="bg-[#16213e] rounded-lg px-3 py-1 text-sm text-[#f5a623]"
             >
-              {[15, 20, 25, 30, 45, 60].map((v) => (
+              {[25, 30, 35, 45, 50, 60].map((v) => (
                 <option key={v} value={v}>{v}分钟</option>
               ))}
             </select>
