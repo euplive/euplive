@@ -12,6 +12,8 @@ interface Settings {
   meditationDuration: number;
   notificationEnabled: boolean;
   notificationRequested: boolean;
+  waterReminder: boolean;
+  sedentaryReminder: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -24,6 +26,8 @@ const defaultSettings: Settings = {
   meditationDuration: 10,
   notificationEnabled: false,
   notificationRequested: false,
+  waterReminder: true,
+  sedentaryReminder: true,
 };
 
 export default function SettingsPage() {
@@ -135,9 +139,50 @@ export default function SettingsPage() {
             {settings.notificationEnabled ? '已开启 ✓' : '开启提醒'}
           </button>
         </div>
+
+        {/* 喝水提醒开关 */}
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-sm">💧 喝水提醒</span>
+          <button
+            onClick={() => updateSetting('waterReminder', !settings.waterReminder)}
+            className={`w-12 h-6 rounded-full transition-colors ${
+              settings.waterReminder ? 'bg-[#4ecdc4]' : 'bg-[#2a3a5c]'
+            }`}
+          >
+            <div
+              className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                settings.waterReminder ? 'translate-x-6' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* 久坐提醒开关 */}
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-sm">🪑 久坐提醒</span>
+          <button
+            onClick={() => updateSetting('sedentaryReminder', !settings.sedentaryReminder)}
+            className={`w-12 h-6 rounded-full transition-colors ${
+              settings.sedentaryReminder ? 'bg-[#4ecdc4]' : 'bg-[#2a3a5c]'
+            }`}
+          >
+            <div
+              className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                settings.sedentaryReminder ? 'translate-x-6' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
         <div className="mt-3 p-3 bg-[#16213e] rounded-lg">
           <p className="text-xs text-[#8892a4]">
             <span className="text-[#f5a623] font-medium">⏰ 早起提醒：</span>设置闹钟时间后，到点会通知+响铃
+          </p>
+          <p className="text-xs text-[#8892a4] mt-1">
+            <span className="text-[#f5a623] font-medium">💧 喝水提醒：</span>每小时整点提醒喝水
+          </p>
+          <p className="text-xs text-[#8892a4] mt-1">
+            <span className="text-[#f5a623] font-medium">🪑 久坐提醒：</span>每40分钟提醒活动
           </p>
           <p className="text-xs text-[#8892a4] mt-1">
             <span className="text-[#f5a623] font-medium">🌙 睡眠提醒：</span>22:00 断电提醒 + 22:30 睡觉提醒

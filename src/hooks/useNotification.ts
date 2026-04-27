@@ -7,6 +7,8 @@ interface AlarmSettings {
   alarmEnabled: boolean;
   shutdownTime: string;   // "22:00"
   sleepTime: string;      // "22:30"
+  waterReminder: boolean; // 喝水提醒
+  sedentaryReminder: boolean; // 久坐提醒
 }
 
 const DEFAULT_SETTINGS: AlarmSettings = {
@@ -14,6 +16,8 @@ const DEFAULT_SETTINGS: AlarmSettings = {
   alarmEnabled: false,
   shutdownTime: '22:00',
   sleepTime: '22:30',
+  waterReminder: true,
+  sedentaryReminder: true,
 };
 
 export function useNotification() {
@@ -23,7 +27,9 @@ export function useNotification() {
     alarm: string;      // 最后通知的日期
     shutdown: string;  // 最后通知的日期
     sleep: string;     // 最后通知的日期
-  }>({ alarm: '', shutdown: '', sleep: '' });
+    water: string;     // 最后通知的时间（每小时的整点）
+    sedentary: string; // 最后通知的时间
+  }>({ alarm: '', shutdown: '', sleep: '', water: '', sedentary: '' });
 
   // 加载设置
   useEffect(() => {
@@ -35,6 +41,21 @@ export function useNotification() {
         alarmEnabled: parsed.isAlarmActive || false,
         shutdownTime: '22:00',
         sleepTime: '22:30',
+        waterReminder: parsed.waterReminder !== false,
+        sedentaryReminder: parsed.sedentaryReminder !== false,
+      };
+    }
+    // 也从 user-settings 读取
+    const userSettings = localStorage.getItem('user-settings');
+    if (userSettings) {
+      const parsed = JSON.parse(userSettings);
+      settingsRef.current = {
+        alarmTime: parsed.alarmTime || settingsRef.current.alarmTime,
+        alarmEnabled: parsed.alarmEnabled || false,
+        shutdownTime: parsed.shutdownTime || '22:00',
+        sleepTime: parsed.sleepTime || '22:30',
+        waterReminder: parsed.waterReminder !== false,
+        sedentaryReminder: parsed.sedentaryReminder !== false,
       };
     }
   }, []);
@@ -126,8 +147,10 @@ export function useNotification() {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const currentHour = now.getHours();
+    const currentTime = `${String(currentHour).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    const { alarmEnabled, alarmTime, shutdownTime, sleepTime } = settingsRef.current;
+    const { alarmEnabled, alarmTime, shutdownTime, sleepTime, waterReminder, sedentaryReminder } = settingsRef.current;
 
     // 解析时间
     const [alarmH, alarmM] = alarmTime.split(':').map(Number);
@@ -148,7 +171,36 @@ export function useNotification() {
       }
     }
 
-    // 2. 断电提醒 (22:00)
+    // 2. 喝水提醒 (每小时整点)
+    if (waterReminder && now.getMinutes() === 0) {
+      const waterKey = `${today}-${currentHour}`;
+      if (notifiedRef.current.water !== waterKey) {
+        notifiedRef.current.water = waterKey;
+        sendNotification('💧 喝水时间到！', '站起来活动一下，喝杯水补充水分~');
+      }
+    }
+
+    // 3. 久坐提醒 (每40分钟)
+    if (sedentaryReminder) {
+      const lastSedentary = localStorage.getItem('last-sedentary-active');
+      const lastActive = lastSedentary ? parseInt(lastSedentary) : 0;
+      const timeSinceActive = Date.now() - lastActive;
+
+      // 如果超过40分钟没有活动
+      if (timeSinceActive > 40 * 60 * 1000) {
+        const sedentaryKey = `${today}-${currentTime}`;
+        if (notifiedRef.current.sedentary !== sedentaryKey) {
+          // 限制每小时最多一次
+          const lastSedentaryNotify = notifiedRef.current.sedentary;
+          if (!lastSedentaryNotify || !lastSedentaryNotify.startsWith(today) || parseInt(lastSedentaryNotify.split('-')[1] || '0') !== currentHour) {
+            notifiedRef.current.sedentary = sedentaryKey;
+            sendNotification('🪑 久坐提醒！', '你已经坐很久了，站起来活动一下吧！');
+          }
+        }
+      }
+    }
+
+    // 4. 断电提醒 (22:00)
     if (Math.abs(currentMinutes - shutdownMinutes) <= 1) {
       if (notifiedRef.current.shutdown !== today) {
         notifiedRef.current.shutdown = today;
@@ -156,7 +208,7 @@ export function useNotification() {
       }
     }
 
-    // 3. 睡觉提醒 (22:30)
+    // 5. 睡觉提醒 (22:30)
     if (Math.abs(currentMinutes - sleepMinutes) <= 1) {
       if (notifiedRef.current.sleep !== today) {
         notifiedRef.current.sleep = today;
@@ -182,6 +234,21 @@ export function useNotification() {
         alarmEnabled: parsed.isAlarmActive || false,
         shutdownTime: '22:00',
         sleepTime: '22:30',
+        waterReminder: parsed.waterReminder !== false,
+        sedentaryReminder: parsed.sedentaryReminder !== false,
+      };
+    }
+    // 也从 user-settings 读取
+    const userSettings = localStorage.getItem('user-settings');
+    if (userSettings) {
+      const parsed = JSON.parse(userSettings);
+      settingsRef.current = {
+        alarmTime: parsed.alarmTime || settingsRef.current.alarmTime,
+        alarmEnabled: parsed.alarmEnabled || settingsRef.current.alarmEnabled,
+        shutdownTime: parsed.shutdownTime || settingsRef.current.shutdownTime,
+        sleepTime: parsed.sleepTime || settingsRef.current.sleepTime,
+        waterReminder: parsed.waterReminder !== false,
+        sedentaryReminder: parsed.sedentaryReminder !== false,
       };
     }
   }, []);
