@@ -31,7 +31,15 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function Timeline() {
-  const { today, completeItem, skipItem } = useScheduleStore();
+  const { today, completeItem, skipItem, completeCustomHabit } = useScheduleStore();
+
+  const handleComplete = (item: ScheduleItem) => {
+    if (item.id.startsWith('custom-')) {
+      completeCustomHabit(item.id);
+    } else {
+      completeItem(item.id);
+    }
+  };
   const [currentMinutes, setCurrentMinutes] = useState(getCurrentTimeMinutes());
 
   useEffect(() => {
@@ -115,7 +123,7 @@ export default function Timeline() {
                     </Link>
                   )}
                   <button
-                    onClick={() => completeItem(item.id)}
+                    onClick={() => handleComplete(item)}
                     className="rounded-lg bg-[#4ecdc4]/20 px-3 py-1 text-xs text-[#4ecdc4] hover:bg-[#4ecdc4]/30 transition-colors"
                   >
                     完成

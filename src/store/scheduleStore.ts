@@ -27,25 +27,35 @@ interface ScheduleState {
   today: DailyRecord | null;
   history: DailyRecord[];
   streakDays: number;
+  customHabits: ScheduleItem[]; // 自定义习惯
 
   initToday: () => void;
   completeItem: (id: string) => void;
   skipItem: (id: string) => void;
   getCompletionRate: () => number;
+  addCustomHabit: (habit: Omit<ScheduleItem, 'id' | 'status'>) => void;
+  removeCustomHabit: (id: string) => void;
+  completeCustomHabit: (id: string) => void;
 }
 
-function createTodayRecord(): DailyRecord {
+function createTodayRecord(customHabits: ScheduleItem[] = []): DailyRecord {
   const today = format(new Date(), 'yyyy-MM-dd');
-  const items: ScheduleItem[] = defaultSchedule.map((tpl) => ({
-    id: tpl.id,
-    type: tpl.type,
-    label: tpl.label,
-    description: tpl.description,
-    scheduledTime: tpl.defaultTime,
-    icon: tpl.icon,
-    path: tpl.path,
-    status: 'pending' as ItemStatus,
-  }));
+  const items: ScheduleItem[] = [
+    ...defaultSchedule.map((tpl) => ({
+      id: tpl.id,
+      type: tpl.type,
+      label: tpl.label,
+      description: tpl.description,
+      scheduledTime: tpl.defaultTime,
+      icon: tpl.icon,
+      path: tpl.path,
+      status: 'pending' as ItemStatus,
+    })),
+    ...customHabits.map(h => ({
+      ...h,
+      status: 'pending' as ItemStatus,
+    })),
+  ];
   return { date: today, items, completionRate: 0 };
 }
 
@@ -74,6 +84,7 @@ export const useScheduleStore = create<ScheduleState>()(
       today: null,
       history: [],
       streakDays: 0,
+      customHabits: [],
 
       initToday: () => {
         const state = get();
@@ -89,9 +100,57 @@ export const useScheduleStore = create<ScheduleState>()(
           if (history.length > 90) history = history.slice(-90);
         }
 
-        const today = createTodayRecord();
+        const today = createTodayRecord(state.customHabits);
         const streakDays = calcStreak(history, today);
         set({ today, history, streakDays });
+      },
+
+      addCustomHabit: (habit) => {
+        const state = get();
+        const newHabit: ScheduleItem = {
+          ...habit,
+          id: `custom-${Date.now()}`,
+          status: 'pending',
+        };
+        const customHabits = [...state.customHabits, newHabit];
+
+        // 如果今天已经初始化，重新创建今天的记录
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        let today = state.today;
+        if (today && today.date === todayStr) {
+          today = createTodayRecord(customHabits);
+        }
+
+        set({ customHabits, today });
+      },
+
+      removeCustomHabit: (id) => {
+        const state = get();
+        const customHabits = state.customHabits.filter(h => h.id !== id);
+
+        // 重新创建今天的记录
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        let today = state.today;
+        if (today && today.date === todayStr) {
+          today = createTodayRecord(customHabits);
+        }
+
+        set({ customHabits, today });
+      },
+
+      completeCustomHabit: (id) => {
+        const state = get();
+        if (!state.today) return;
+
+        const items = state.today.items.map((item) =>
+          item.id === id
+            ? { ...item, status: 'completed' as ItemStatus, completedAt: format(new Date(), 'HH:mm') }
+            : item
+        );
+        const completionRate = calcCompletionRate(items);
+        const today = { ...state.today, items, completionRate };
+        const streakDays = calcStreak(state.history, today);
+        set({ today, streakDays });
       },
 
       completeItem: (id: string) => {
