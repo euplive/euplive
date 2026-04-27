@@ -30,6 +30,7 @@ export default function PomodoroPage() {
   const [sessionsCompleted, setSessionsCompleted] = useState(0);
   const [todaySessions, setTodaySessions] = useState(0);
   const [settings, setSettings] = useState<PomodoroSettings>(DEFAULT_SETTINGS);
+  const [musicEnabled, setMusicEnabled] = useState(true);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -172,7 +173,7 @@ export default function PomodoroPage() {
         setTimeLeft(settings.longBreakDuration * 60);
         // 长休息时提醒冥想，并播放冥想音乐
         sendNotification('🧘 长休息时间到', '15分钟冥想，放松身心');
-        if (musicRef.current) {
+        if (musicEnabled && musicRef.current) {
           musicRef.current.play().catch(() => {});
         }
       } else {
@@ -199,6 +200,14 @@ export default function PomodoroPage() {
 
   // 开始
   const handleStart = () => {
+    // 尝试播放音乐（浏览器需要用户交互后才能播放音频）
+    if (musicEnabled && musicRef.current && mode === 'longBreak') {
+      musicRef.current.play().catch(() => {});
+    }
+    // 请求通知权限
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
     setStatus('running');
   };
 
@@ -365,6 +374,23 @@ export default function PomodoroPage() {
       <div className="rounded-xl bg-[#1e2a4a] p-4">
         <h2 className="text-sm font-medium text-[#8892a4] mb-3">⚙️ 设置</h2>
         <div className="space-y-3">
+          {/* 冥想音乐开关 */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm">🧘 冥想音乐</span>
+            <button
+              onClick={() => setMusicEnabled(!musicEnabled)}
+              className={`w-12 h-6 rounded-full transition-colors ${
+                musicEnabled ? 'bg-[#4ecdc4]' : 'bg-[#2a3a5c]'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                  musicEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
           <div className="flex items-center justify-between">
             <span className="text-sm">专注时长</span>
             <select
