@@ -5,17 +5,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 type TimerMode = 'focus' | 'shortBreak' | 'longBreak';
 type TimerStatus = 'idle' | 'running' | 'paused';
 
-type MusicMode = 'none' | 'meditation' | 'nature';
-
-interface PomodoroSettings {
-  focusDuration: number; // 分钟
+interface EupClockSettings {
+  focusDuration: number;
   shortBreakDuration: number;
   longBreakDuration: number;
-  longBreakInterval: number; // 几次长休息
-  dailyGoal: number; // 每日目标
+  longBreakInterval: number;
+  dailyGoal: number;
 }
 
-const DEFAULT_SETTINGS: PomodoroSettings = {
+const DEFAULT_SETTINGS: EupClockSettings = {
   focusDuration: 35,
   shortBreakDuration: 5,
   longBreakDuration: 15,
@@ -23,202 +21,174 @@ const DEFAULT_SETTINGS: PomodoroSettings = {
   dailyGoal: 6,
 };
 
-export default function PomodoroPage() {
+// 播放简单提示音
+const playTone = (freq: number, duration: number) => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  } catch (e) {
+    console.log('播放失败', e);
+  }
+};
+
+// 播放冥想音乐 - 持续的音调
+const playMeditationSound = () => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+    // 创建多个低频音调营造氛围
+    const freqs = [174, 285, 396];
+    const oscs: OscillatorNode[] = [];
+    const gains: GainNode[] = [];
+
+    freqs.forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.frequency.value = f;
+      osc.type = 'sine';
+
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.08 / (i + 1), ctx.currentTime + 2);
+      gain.gain.linearRampToValueAtTime(0.05 / (i + 1), ctx.currentTime + 800);
+
+      osc.start();
+      oscs.push(osc);
+      gains.push(gain);
+    });
+
+    // 返回停止函数
+    return () => {
+      gains.forEach(g => {
+        try { g.gain.linearRampToValueAtTime(0, (window as any).audioContext.currentTime + 0.5); } catch {}
+      });
+      setTimeout(() => oscs.forEach(o => { try { o.stop(); } catch {} }), 500);
+    };
+  } catch (e) {
+    console.log('冥想音乐失败', e);
+    return () => {};
+  }
+};
+
+export default function EupClockPage() {
   const [mode, setMode] = useState<TimerMode>('focus');
   const [status, setStatus] = useState<TimerStatus>('idle');
   const [timeLeft, setTimeLeft] = useState(35 * 60);
   const [sessionsCompleted, setSessionsCompleted] = useState(0);
   const [todaySessions, setTodaySessions] = useState(0);
-  const [settings, setSettings] = useState<PomodoroSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<EupClockSettings>(DEFAULT_SETTINGS);
   const [musicEnabled, setMusicEnabled] = useState(true);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const musicRef = useRef<HTMLAudioElement | null>(null);
-  const meditationStopRef = useRef<(() => void) | null>(null);
-
-  // 加载冥想音乐 - 使用 Web Audio API 生成
-  const initMeditationMusic = useCallback(() => {
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-
-      // 创建一个简单的冥想音乐 - 低频持续音
-      const createDrone = (freq: number, duration: number) => {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        oscillator.frequency.value = freq;
-        oscillator.type = 'sine';
-
-        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 2);
-        gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + duration - 2);
-        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
-
-        oscillator.start();
-        oscillator.stop(audioContext.currentTime + duration);
-
-        return { oscillator, gainNode };
-      };
-
-      // 返回播放函数
-      return () => {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.frequency.value = 174; // 治愈频率
-        osc.type = 'sine';
-
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 300);
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 600);
-
-        osc.start();
-        osc.stop(ctx.currentTime + 600);
-      };
-    } catch (e) {
-      console.log('音频初始化失败:', e);
-    }
-  }, []);
-
-  // 使用 Web Audio API 播放冥想音乐
-  const playMeditationMusic = useCallback(() => {
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-
-      // 创建多个振荡器营造氛围
-      const frequencies = [174, 285, 396, 417]; // 治愈频率
-      const oscillators: OscillatorNode[] = [];
-      const gains: GainNode[] = [];
-
-      frequencies.forEach((freq, i) => {
-        const osc = audioContext.createOscillator();
-        const gain = audioContext.createGain();
-
-        osc.connect(gain);
-        gain.connect(audioContext.destination);
-
-        osc.frequency.value = freq;
-        osc.type = 'sine';
-
-        gain.gain.setValueAtTime(0, audioContext.currentTime);
-        gain.gain.linearRampToValueAtTime(0.05 / (i + 1), audioContext.currentTime + 3);
-        gain.gain.setValueAtTime(0.05 / (i + 1), audioContext.currentTime + 897); // 15分钟
-        gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + 900);
-
-        osc.start();
-        osc.stop(audioContext.currentTime + 900);
-
-        oscillators.push(osc);
-        gains.push(gain);
-      });
-
-      return () => {
-        oscillators.forEach(osc => osc.stop());
-      };
-    } catch (e) {
-      console.log('冥想音乐播放失败:', e);
-    }
-  }, []);
-
-  // 停止冥想音乐
-  const stopMeditationMusic = useCallback(() => {
-    // Web Audio API 创建的振荡器会自动停止
-  }, []);
+  const musicStopRef = useRef<(() => void) | null>(null);
 
   // 加载设置
   useEffect(() => {
     const saved = localStorage.getItem('eup-clock-settings');
-    if (saved) {
-      setSettings(JSON.parse(saved));
-    }
+    if (saved) setSettings(JSON.parse(saved));
 
-    // 加载今日完成数
     const today = new Date().toISOString().slice(0, 10);
     const savedToday = localStorage.getItem(`eup-clock-today-${today}`);
-    if (savedToday) {
-      setTodaySessions(parseInt(savedToday));
-    }
+    if (savedToday) setTodaySessions(parseInt(savedToday));
   }, []);
 
-  // 保存设置
-  const saveSettings = (newSettings: PomodoroSettings) => {
+  const saveSettings = (newSettings: EupClockSettings) => {
     setSettings(newSettings);
     localStorage.setItem('eup-clock-settings', JSON.stringify(newSettings));
   };
 
-  // 获取当前时长
   const getDuration = useCallback(() => {
     switch (mode) {
-      case 'focus':
-        return settings.focusDuration * 60;
-      case 'shortBreak':
-        return settings.shortBreakDuration * 60;
-      case 'longBreak':
-        return settings.longBreakDuration * 60;
+      case 'focus': return settings.focusDuration * 60;
+      case 'shortBreak': return settings.shortBreakDuration * 60;
+      case 'longBreak': return settings.longBreakDuration * 60;
     }
   }, [mode, settings]);
 
-  // 格式化时间
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  // 发送浏览器通知
   const sendNotification = (title: string, body: string) => {
     if (Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: '/icon-192.png',
-      });
+      new Notification(title, { body, icon: '/icon-192.png' });
     }
   };
 
-  // 播放提示音
-  const playNotificationSound = () => {
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+  // 完成一个周期
+  const handleSessionComplete = () => {
+    setStatus('idle');
+    playTone(880, 0.3);
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+    if (mode === 'focus') {
+      const newSessions = sessionsCompleted + 1;
+      setSessionsCompleted(newSessions);
 
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
+      const today = new Date().toISOString().slice(0, 10);
+      const newTodaySessions = todaySessions + 1;
+      setTodaySessions(newTodaySessions);
+      localStorage.setItem(`eup-clock-today-${today}`, newTodaySessions.toString());
 
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      sendNotification('🎉 Eup钟完成！', '35分钟专注结束，休息一下吧~');
 
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.5);
-
-      // 震动
-      if ('vibrate' in navigator) {
-        navigator.vibrate([200, 100, 200]);
+      if (newSessions % settings.longBreakInterval === 0) {
+        setMode('longBreak');
+        setTimeLeft(settings.longBreakDuration * 60);
+        // 长休息 - 播放冥想音乐
+        if (musicEnabled) {
+          if (musicStopRef.current) musicStopRef.current();
+          musicStopRef.current = playMeditationSound();
+        }
+        sendNotification('🧘 长休息时间', '15分钟冥想，放松身心');
+      } else {
+        setMode('shortBreak');
+        setTimeLeft(settings.shortBreakDuration * 60);
+        // 短休息 - 停止音乐
+        if (musicStopRef.current) {
+          musicStopRef.current();
+          musicStopRef.current = null;
+        }
+        sendNotification('🎯 短休息时间', '5分钟提肛运动，保持健康');
       }
-    } catch (e) {
-      console.log('播放音频失败:', e);
+    } else {
+      // 休息结束
+      setMode('focus');
+      setTimeLeft(settings.focusDuration * 60);
+      playTone(660, 0.3);
+      sendNotification('⏰ 休息结束', '35分钟专注时间，开始工作！');
+
+      if (musicStopRef.current) {
+        musicStopRef.current();
+        musicStopRef.current = null;
+      }
     }
   };
 
-  // 计时器逻辑
+  // 计时器
   useEffect(() => {
     if (status === 'running') {
       intervalRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            // 时间到
-            playNotificationSound();
             handleSessionComplete();
             return 0;
           }
@@ -226,116 +196,49 @@ export default function PomodoroPage() {
         });
       }, 1000);
     }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [status]);
 
-  // 完成一个番茄钟
-  const handleSessionComplete = () => {
-    setStatus('idle');
-
-    if (mode === 'focus') {
-      const newSessions = sessionsCompleted + 1;
-      setSessionsCompleted(newSessions);
-
-      // 保存今日完成数
-      const today = new Date().toISOString().slice(0, 10);
-      const newTodaySessions = todaySessions + 1;
-      setTodaySessions(newTodaySessions);
-      localStorage.setItem(`eup-clock-today-${today}`, newTodaySessions.toString());
-
-      // 发送通知提醒
-      playNotificationSound();
-
-      // 自动切换到休息
-      if (newSessions % settings.longBreakInterval === 0) {
-        setMode('longBreak');
-        setTimeLeft(settings.longBreakDuration * 60);
-        // 长休息时提醒冥想，并播放冥想音乐
-        sendNotification('🧘 长休息时间到', '15分钟冥想，放松身心');
-        if (musicEnabled) {
-          if (meditationStopRef.current) {
-            meditationStopRef.current();
-          }
-          meditationStopRef.current = playMeditationMusic();
-        }
-      } else {
-        setMode('shortBreak');
-        setTimeLeft(settings.shortBreakDuration * 60);
-        // 短休息时提醒提肛，暂停冥想音乐
-        sendNotification('🎯 短休息时间到', '5分钟提肛运动，保持健康');
-        if (meditationStopRef.current) {
-          meditationStopRef.current();
-          meditationStopRef.current = null;
-        }
-      }
-    } else {
-      // 休息结束，切换到专注
-      setMode('focus');
-      setTimeLeft(settings.focusDuration * 60);
-      playNotificationSound();
-      sendNotification('⏰ 休息结束', '35分钟专注时间，开始工作吧！');
-      // 停止冥想音乐
-      if (meditationStopRef.current) {
-        meditationStopRef.current();
-        meditationStopRef.current = null;
-      }
-    }
-  };
-
-  // 开始
   const handleStart = () => {
-    // 尝试播放音乐（浏览器需要用户交互后才能播放音频）
-    if (musicEnabled && musicRef.current && mode === 'longBreak') {
-      musicRef.current.play().catch(() => {});
-    }
-    // 请求通知权限
-    if (Notification.permission === 'default') {
-      Notification.requestPermission();
+    if (Notification.permission === 'default') Notification.requestPermission();
+    // 如果是长休息模式，开始时播放音乐
+    if (musicEnabled && mode === 'longBreak') {
+      if (musicStopRef.current) musicStopRef.current();
+      musicStopRef.current = playMeditationSound();
     }
     setStatus('running');
   };
 
-  // 暂停
-  const handlePause = () => {
-    setStatus('paused');
-  };
-
-  // 重置
+  const handlePause = () => setStatus('paused');
   const handleReset = () => {
     setStatus('idle');
     setTimeLeft(getDuration());
-  };
-
-  // 切换模式
-  const handleModeChange = (newMode: TimerMode) => {
-    setMode(newMode);
-    setStatus('idle');
-    switch (newMode) {
-      case 'focus':
-        setTimeLeft(settings.focusDuration * 60);
-        break;
-      case 'shortBreak':
-        setTimeLeft(settings.shortBreakDuration * 60);
-        break;
-      case 'longBreak':
-        setTimeLeft(settings.longBreakDuration * 60);
-        break;
+    if (musicStopRef.current) {
+      musicStopRef.current();
+      musicStopRef.current = null;
     }
   };
 
-  // 模式配置
-  const modeConfig = {
-    focus: { label: '专注', icon: '🎯', color: '#f5a623' },
-    shortBreak: { label: '短休息', icon: '☕', color: '#4ecdc4' },
-    longBreak: { label: '长休息', icon: '🌟', color: '#9b59b6' },
+  const handleModeChange = (newMode: TimerMode) => {
+    if (musicStopRef.current) {
+      musicStopRef.current();
+      musicStopRef.current = null;
+    }
+    setMode(newMode);
+    setStatus('idle');
+    switch (newMode) {
+      case 'focus': setTimeLeft(settings.focusDuration * 60); break;
+      case 'shortBreak': setTimeLeft(settings.shortBreakDuration * 60); break;
+      case 'longBreak': setTimeLeft(settings.longBreakDuration * 60); break;
+    }
   };
 
-  // 进度百分比
+  const modeConfig: Record<TimerMode, { label: string; icon: string; color: string }> = {
+    focus: { label: '专注', icon: '⏰', color: '#f5a623' },
+    shortBreak: { label: '短休息', icon: '🎯', color: '#4ecdc4' },
+    longBreak: { label: '长休息', icon: '🧘', color: '#9b59b6' },
+  };
+
   const totalTime = getDuration();
   const progress = ((totalTime - timeLeft) / totalTime) * 100;
 
@@ -350,9 +253,7 @@ export default function PomodoroPage() {
             key={m}
             onClick={() => handleModeChange(m)}
             className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-              mode === m
-                ? 'bg-[#16213e] text-white'
-                : 'text-[#8892a4] hover:text-white'
+              mode === m ? 'bg-[#16213e] text-white' : 'text-[#8892a4] hover:text-white'
             }`}
           >
             {modeConfig[m].icon} {modeConfig[m].label}
@@ -362,163 +263,118 @@ export default function PomodoroPage() {
 
       {/* 计时器 */}
       <div className="relative flex items-center justify-center py-4">
-        {/* 进度环 */}
-        <svg className="absolute w-48 h-48 transform -rotate-90">
+        <svg className="absolute w-40 h-40 transform -rotate-90">
+          <circle cx="80" cy="80" r="72" fill="none" stroke="#2a3a5c" strokeWidth="6" />
           <circle
-            cx="96"
-            cy="96"
-            r="88"
-            fill="none"
-            stroke="#2a3a5c"
-            strokeWidth="6"
-          />
-          <circle
-            cx="96"
-            cy="96"
-            r="88"
-            fill="none"
-            stroke={modeConfig[mode].color}
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeDasharray={2 * Math.PI * 88}
-            strokeDashoffset={2 * Math.PI * 88 * (1 - progress / 100)}
+            cx="80" cy="80" r="72" fill="none" stroke={modeConfig[mode].color} strokeWidth="6"
+            strokeLinecap="round" strokeDasharray={2 * Math.PI * 72}
+            strokeDashoffset={2 * Math.PI * 72 * (1 - progress / 100)}
             className="transition-all duration-1000"
           />
         </svg>
-
-        {/* 时间显示 */}
         <div className="text-center">
-          <span className="text-5xl font-mono font-bold" style={{ color: modeConfig[mode].color }}>
+          <span className="text-4xl font-mono font-bold" style={{ color: modeConfig[mode].color }}>
             {formatTime(timeLeft)}
           </span>
-          <p className="text-sm text-[#8892a2] mt-2">{modeConfig[mode].label}中</p>
+          <p className="text-sm text-[#8892a2] mt-1">{modeConfig[mode].label}中</p>
         </div>
       </div>
 
       {/* 控制按钮 */}
-      <div className="flex justify-center gap-4">
+      <div className="flex justify-center gap-3">
         {status === 'idle' && (
-          <button
-            onClick={handleStart}
-            className="w-20 h-20 rounded-full text-2xl font-bold text-[#1a1a2e] hover:scale-105 transition-transform"
-            style={{ backgroundColor: modeConfig[mode].color }}
-          >
+          <button onClick={handleStart} className="w-16 h-16 rounded-full text-xl font-bold text-[#1a1a2e] hover:scale-105" style={{ backgroundColor: modeConfig[mode].color }}>
             ▶
           </button>
         )}
         {status === 'running' && (
-          <button
-            onClick={handlePause}
-            className="w-20 h-20 rounded-full text-2xl font-bold text-[#1a1a2e] bg-[#f5a623] hover:scale-105 transition-transform"
-          >
+          <button onClick={handlePause} className="w-16 h-16 rounded-full text-xl font-bold text-[#1a1a2e] bg-[#f5a623] hover:scale-105">
             ⏸
           </button>
         )}
         {status === 'paused' && (
-          <button
-            onClick={handleStart}
-            className="w-20 h-20 rounded-full text-2xl font-bold text-[#1a1a2e] bg-[#4ecdc4] hover:scale-105 transition-transform"
-          >
+          <button onClick={handleStart} className="w-16 h-16 rounded-full text-xl font-bold text-[#1a1a2e] bg-[#4ecdc4] hover:scale-105">
             ▶
           </button>
         )}
-        <button
-          onClick={handleReset}
-          className="w-14 h-14 rounded-full text-xl bg-[#2a3a5c] text-[#8892a4] hover:text-white hover:scale-105 transition-transform"
-        >
+        <button onClick={handleReset} className="w-12 h-12 rounded-full text-lg bg-[#2a3a5c] text-[#8892a4] hover:text-white">
           ↺
         </button>
       </div>
 
       {/* 统计 */}
       <div className="rounded-xl bg-[#1e2a4a] p-4">
-        <h2 className="text-sm font-medium text-[#8892a4] mb-3">今日统计</h2>
-        <div className="flex gap-4">
-          <div className="flex-1 text-center">
+        <h2 className="text-sm font-medium text-[#8892a4] mb-3">今日完成</h2>
+        <div className="flex justify-center gap-8">
+          <div className="text-center">
             <p className="text-2xl font-bold text-[#f5a623]">{todaySessions}</p>
             <p className="text-xs text-[#8892a4]">完成</p>
           </div>
-          <div className="flex-1 text-center">
+          <div className="text-center">
             <p className="text-2xl font-bold text-[#4ecdc4]">{settings.dailyGoal}</p>
             <p className="text-xs text-[#8892a4]">目标</p>
           </div>
-          <div className="flex-1 text-center">
-            <p className="text-2xl font-bold text-white">
-              {Math.min(100, Math.round((todaySessions / settings.dailyGoal) * 100))}%
-            </p>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-white">{Math.min(100, Math.round((todaySessions / settings.dailyGoal) * 100))}%</p>
             <p className="text-xs text-[#8892a4]">完成率</p>
           </div>
-        </div>
-
-        {/* 进度条 */}
-        <div className="mt-4 h-2 rounded-full bg-[#2a3a5c] overflow-hidden">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-[#f5a623] to-[#4ecdc4] transition-all duration-500"
-            style={{ width: `${Math.min(100, (todaySessions / settings.dailyGoal) * 100)}%` }}
-          />
         </div>
       </div>
 
       {/* 设置 */}
       <div className="rounded-xl bg-[#1e2a4a] p-4">
         <h2 className="text-sm font-medium text-[#8892a4] mb-3">⚙️ 设置</h2>
-        <div className="space-y-3">
-          {/* 冥想音乐开关 */}
-          <div className="flex items-center justify-between">
-            <span className="text-sm">🧘 冥想音乐</span>
-            <button
-              onClick={() => setMusicEnabled(!musicEnabled)}
-              className={`w-12 h-6 rounded-full transition-colors ${
-                musicEnabled ? 'bg-[#4ecdc4]' : 'bg-[#2a3a5c]'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                  musicEnabled ? 'translate-x-6' : 'translate-x-0.5'
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* 测试音乐按钮 */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm">🧘 冥想音乐</span>
           <button
-            onClick={() => {
-              const stop = playMeditationMusic();
-              if (stop) {
-                alert('正在播放冥想音乐...点击暂停按钮停止');
-                setTimeout(() => stop(), 3000);
-              }
-            }}
-            className="w-full mt-2 py-2 rounded-lg bg-[#4ecdc4]/20 text-sm text-[#4ecdc4]"
+            onClick={() => setMusicEnabled(!musicEnabled)}
+            className={`w-12 h-6 rounded-full transition-colors ${musicEnabled ? 'bg-[#4ecdc4]' : 'bg-[#2a3a5c]'}`}
           >
-            🔊 测试播放冥想音乐
+            <div className={`w-5 h-5 rounded-full bg-white transition-transform ${musicEnabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
           </button>
-
-          <div className="flex items-center justify-between">
-            <span className="text-sm">专注时长</span>
-            <select
-              value={settings.focusDuration}
-              onChange={(e) => saveSettings({ ...settings, focusDuration: parseInt(e.target.value) })}
-              className="bg-[#16213e] rounded-lg px-3 py-1 text-sm text-[#f5a623]"
-            >
-              {[25, 30, 35, 45, 50, 60].map((v) => (
-                <option key={v} value={v}>{v}分钟</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm">每日目标</span>
-            <select
-              value={settings.dailyGoal}
-              onChange={(e) => saveSettings({ ...settings, dailyGoal: parseInt(e.target.value) })}
-              className="bg-[#16213e] rounded-lg px-3 py-1 text-sm text-[#f5a623]"
-            >
-              {[4, 6, 8, 10, 12].map((v) => (
-                <option key={v} value={v}>{v}个</option>
-              ))}
-            </select>
-          </div>
         </div>
+        <button
+          onClick={() => {
+            if (musicEnabled) {
+              const stop = playMeditationSound();
+              setTimeout(stop, 3000);
+              alert('正在播放冥想音乐...');
+            }
+          }}
+          className="w-full py-2 rounded-lg bg-[#4ecdc4]/20 text-sm text-[#4ecdc4]"
+        >
+          🔊 测试冥想音乐
+        </button>
+        <div className="mt-3 flex items-center justify-between">
+          <span className="text-sm">专注时长</span>
+          <select
+            value={settings.focusDuration}
+            onChange={(e) => saveSettings({ ...settings, focusDuration: parseInt(e.target.value) })}
+            className="bg-[#16213e] rounded-lg px-3 py-1 text-sm text-[#f5a623]"
+          >
+            {[25, 30, 35, 45, 50, 60].map((v) => <option key={v} value={v}>{v}分钟</option>)}
+          </select>
+        </div>
+        <div className="mt-3 flex items-center justify-between">
+          <span className="text-sm">每日目标</span>
+          <select
+            value={settings.dailyGoal}
+            onChange={(e) => saveSettings({ ...settings, dailyGoal: parseInt(e.target.value) })}
+            className="bg-[#16213e] rounded-lg px-3 py-1 text-sm text-[#f5a623]"
+          >
+            {[4, 6, 8, 10, 12].map((v) => <option key={v} value={v}>{v}个</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* 说明 */}
+      <div className="rounded-xl bg-[#1e2a4a] p-4 text-sm text-[#8892a4]">
+        <p>💡 <strong>Eup钟工作法：</strong></p>
+        <ul className="mt-2 space-y-1 text-xs">
+          <li>1. 专注35分钟工作</li>
+          <li>2. 短休息5分钟（提肛运动）</li>
+          <li>3. 每4个周期后长休息15分钟（冥想）</li>
+        </ul>
       </div>
     </div>
   );
