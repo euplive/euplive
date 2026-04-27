@@ -35,21 +35,102 @@ export default function PomodoroPage() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
+  const meditationStopRef = useRef<(() => void) | null>(null);
 
-  // 加载冥想音乐
-  useEffect(() => {
-    musicRef.current = new Audio('/audio/meditation-rest-now.mp3');
-    musicRef.current.loop = true;
-    musicRef.current.volume = 0.5;
-    musicRef.current.onerror = () => {
-      console.error('音频加载失败');
-    };
-    return () => {
-      if (musicRef.current) {
-        musicRef.current.pause();
-        musicRef.current = null;
-      }
-    };
+  // 加载冥想音乐 - 使用 Web Audio API 生成
+  const initMeditationMusic = useCallback(() => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+      // 创建一个简单的冥想音乐 - 低频持续音
+      const createDrone = (freq: number, duration: number) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.value = freq;
+        oscillator.type = 'sine';
+
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 2);
+        gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + duration - 2);
+        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + duration);
+
+        return { oscillator, gainNode };
+      };
+
+      // 返回播放函数
+      return () => {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.frequency.value = 174; // 治愈频率
+        osc.type = 'sine';
+
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 300);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 600);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 600);
+      };
+    } catch (e) {
+      console.log('音频初始化失败:', e);
+    }
+  }, []);
+
+  // 使用 Web Audio API 播放冥想音乐
+  const playMeditationMusic = useCallback(() => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+      // 创建多个振荡器营造氛围
+      const frequencies = [174, 285, 396, 417]; // 治愈频率
+      const oscillators: OscillatorNode[] = [];
+      const gains: GainNode[] = [];
+
+      frequencies.forEach((freq, i) => {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+
+        osc.frequency.value = freq;
+        osc.type = 'sine';
+
+        gain.gain.setValueAtTime(0, audioContext.currentTime);
+        gain.gain.linearRampToValueAtTime(0.05 / (i + 1), audioContext.currentTime + 3);
+        gain.gain.setValueAtTime(0.05 / (i + 1), audioContext.currentTime + 897); // 15分钟
+        gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + 900);
+
+        osc.start();
+        osc.stop(audioContext.currentTime + 900);
+
+        oscillators.push(osc);
+        gains.push(gain);
+      });
+
+      return () => {
+        oscillators.forEach(osc => osc.stop());
+      };
+    } catch (e) {
+      console.log('冥想音乐播放失败:', e);
+    }
+  }, []);
+
+  // 停止冥想音乐
+  const stopMeditationMusic = useCallback(() => {
+    // Web Audio API 创建的振荡器会自动停止
   }, []);
 
   // 加载设置
@@ -176,16 +257,20 @@ export default function PomodoroPage() {
         setTimeLeft(settings.longBreakDuration * 60);
         // 长休息时提醒冥想，并播放冥想音乐
         sendNotification('🧘 长休息时间到', '15分钟冥想，放松身心');
-        if (musicEnabled && musicRef.current) {
-          musicRef.current.play().catch(() => {});
+        if (musicEnabled) {
+          if (meditationStopRef.current) {
+            meditationStopRef.current();
+          }
+          meditationStopRef.current = playMeditationMusic();
         }
       } else {
         setMode('shortBreak');
         setTimeLeft(settings.shortBreakDuration * 60);
         // 短休息时提醒提肛，暂停冥想音乐
         sendNotification('🎯 短休息时间到', '5分钟提肛运动，保持健康');
-        if (musicRef.current) {
-          musicRef.current.pause();
+        if (meditationStopRef.current) {
+          meditationStopRef.current();
+          meditationStopRef.current = null;
         }
       }
     } else {
@@ -195,8 +280,9 @@ export default function PomodoroPage() {
       playNotificationSound();
       sendNotification('⏰ 休息结束', '35分钟专注时间，开始工作吧！');
       // 停止冥想音乐
-      if (musicRef.current) {
-        musicRef.current.pause();
+      if (meditationStopRef.current) {
+        meditationStopRef.current();
+        meditationStopRef.current = null;
       }
     }
   };
@@ -254,7 +340,7 @@ export default function PomodoroPage() {
   const progress = ((totalTime - timeLeft) / totalTime) * 100;
 
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-4 pb-28">
       <h1 className="text-xl font-bold text-center">⏰ Eup钟</h1>
 
       {/* 模式选择 */}
@@ -275,27 +361,27 @@ export default function PomodoroPage() {
       </div>
 
       {/* 计时器 */}
-      <div className="relative flex items-center justify-center py-8">
+      <div className="relative flex items-center justify-center py-4">
         {/* 进度环 */}
-        <svg className="absolute w-64 h-64 transform -rotate-90">
+        <svg className="absolute w-48 h-48 transform -rotate-90">
           <circle
-            cx="128"
-            cy="128"
-            r="120"
+            cx="96"
+            cy="96"
+            r="88"
             fill="none"
             stroke="#2a3a5c"
-            strokeWidth="8"
+            strokeWidth="6"
           />
           <circle
-            cx="128"
-            cy="128"
-            r="120"
+            cx="96"
+            cy="96"
+            r="88"
             fill="none"
             stroke={modeConfig[mode].color}
-            strokeWidth="8"
+            strokeWidth="6"
             strokeLinecap="round"
-            strokeDasharray={2 * Math.PI * 120}
-            strokeDashoffset={2 * Math.PI * 120 * (1 - progress / 100)}
+            strokeDasharray={2 * Math.PI * 88}
+            strokeDashoffset={2 * Math.PI * 88 * (1 - progress / 100)}
             className="transition-all duration-1000"
           />
         </svg>
@@ -397,11 +483,10 @@ export default function PomodoroPage() {
           {/* 测试音乐按钮 */}
           <button
             onClick={() => {
-              if (musicRef.current) {
-                musicRef.current.currentTime = 0;
-                musicRef.current.play().catch((e) => {
-                  alert('播放失败: ' + e.message);
-                });
+              const stop = playMeditationMusic();
+              if (stop) {
+                alert('正在播放冥想音乐...点击暂停按钮停止');
+                setTimeout(() => stop(), 3000);
               }
             }}
             className="w-full mt-2 py-2 rounded-lg bg-[#4ecdc4]/20 text-sm text-[#4ecdc4]"
