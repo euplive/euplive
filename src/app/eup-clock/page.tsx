@@ -72,6 +72,16 @@ export default function PomodoroPage() {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  // 发送浏览器通知
+  const sendNotification = (title: string, body: string) => {
+    if (Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/icon-192.png',
+      });
+    }
+  };
+
   // 播放提示音
   const playNotificationSound = () => {
     try {
@@ -137,18 +147,27 @@ export default function PomodoroPage() {
       setTodaySessions(newTodaySessions);
       localStorage.setItem(`eup-clock-today-${today}`, newTodaySessions.toString());
 
+      // 发送通知提醒
+      playNotificationSound();
+
       // 自动切换到休息
       if (newSessions % settings.longBreakInterval === 0) {
         setMode('longBreak');
         setTimeLeft(settings.longBreakDuration * 60);
+        // 长休息时提醒冥想
+        sendNotification('🧘 长休息时间到', '15分钟冥想，放松身心');
       } else {
         setMode('shortBreak');
         setTimeLeft(settings.shortBreakDuration * 60);
+        // 短休息时提醒提肛
+        sendNotification('🎯 短休息时间到', '5分钟提肛运动，保持健康');
       }
     } else {
       // 休息结束，切换到专注
       setMode('focus');
       setTimeLeft(settings.focusDuration * 60);
+      playNotificationSound();
+      sendNotification('⏰ 休息结束', '35分钟专注时间，开始工作吧！');
     }
   };
 
