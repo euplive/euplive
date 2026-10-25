@@ -1,15 +1,16 @@
 'use client';
 
 import { useScheduleStore } from '@/store/scheduleStore';
-import { useEffect, useState } from 'react';
-import { format } from 'date-fns';
-
-interface ModuleStat {
-  label: string;
-  icon: string;
-  completed: number;
-  total: number;
-}
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { dayKey } from '@/lib/sedentaryTimer';
+import {
+  buildModuleStats,
+  parseSessionCount,
+  parseWaterGoal,
+  parseWaterToday,
+  summarizeActivity,
+  type ModuleStat,
+} from '@/lib/healthGlance';
 
 // 成就定义
 interface Achievement {
@@ -26,68 +27,92 @@ const ACHIEVEMENTS: Omit<Achievement, 'unlocked'>[] = [
   { id: 'week_streak', icon: '🔥', name: '一周坚持', desc: '连续7天', condition: ({ streakDays }) => streakDays >= 7 },
   { id: 'month_streak', icon: '💪', name: '月度自律', desc: '连续30天', condition: ({ streakDays }) => streakDays >= 30 },
   { id: 'century', icon: '🏆', name: '百日英雄', desc: '累计100天', condition: ({ totalDays }) => totalDays >= 100 },
-  { id: 'early_bird', icon: '🐦', name: '早起鸟', desc: '早起打卡10次', condition: ({ moduleStats }) => moduleStats[0]?.completed >= 10 },
-  { id: 'meditation_master', icon: '🧘', name: '冥想大师', desc: '冥想10次', condition: ({ moduleStats }) => moduleStats[4]?.completed >= 10 },
+  { id: 'early_bird', icon: '🐦', name: '早起鸟', desc: '早起打卡10次', condition: ({ moduleStats }) => completedOf(moduleStats, '早起') >= 10 },
+  { id: 'meditation_master', icon: '🧘', name: '冥想大师', desc: '冥想10次', condition: ({ moduleStats }) => completedOf(moduleStats, '冥想') >= 10 },
 ];
 
+function completedOf(moduleStats: ModuleStat[], label: string): number {
+  return moduleStats.find((item) => item.label === label)?.completed ?? 0;
+}
+
+interface TodayHealth {
+  standCount: number;
+  waterCups: number;
+  waterGoal: number;
+}
+
+const EMPTY_HEALTH: TodayHealth = { standCount: 0, waterCups: 0, waterGoal: 8 };
+let cachedHealthKey = '';
+let cachedHealth = EMPTY_HEALTH;
+
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function subscribeHealth(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  window.addEventListener('focus', onChange);
+  return () => {
+    window.removeEventListener('storage', onChange);
+    window.removeEventListener('focus', onChange);
+  };
+}
+
+function readTodayHealth(): TodayHealth {
+  const utcDay = dayKey(Date.now());
+  const sessions = readStorage(`sedentary-sessions-${utcDay}`) ?? '';
+  const water = readStorage(`water-today-${utcDay}`) ?? '';
+  const goal = readStorage('water-daily-goal') ?? '';
+  const key = `${utcDay}|${sessions}|${water}|${goal}`;
+  if (key === cachedHealthKey) return cachedHealth;
+  cachedHealthKey = key;
+  cachedHealth = {
+    standCount: parseSessionCount(sessions || null),
+    waterCups: parseWaterToday(water || null),
+    waterGoal: parseWaterGoal(goal || null),
+  };
+  return cachedHealth;
+}
+
 export default function StatsPage() {
-  const { today, history, streakDays, initToday, customHabits } = useScheduleStore();
-  const [weekData, setWeekData] = useState<number[]>([]);
-  const [moduleStats, setModuleStats] = useState<ModuleStat[]>([]);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const { today, history, streakDays, initToday } = useScheduleStore();
   const [showHistory, setShowHistory] = useState(false);
+  const health = useSyncExternalStore(subscribeHealth, readTodayHealth, () => EMPTY_HEALTH);
 
   useEffect(() => {
     initToday();
   }, [initToday]);
 
-  useEffect(() => {
-    // 计算最近7天数据
+  const weekData = useMemo(() => {
     const last7 = [...history.slice(-6), ...(today ? [today] : [])];
-    const rates = last7.map((r) => r.completionRate);
-    // 补齐7天
+    const rates = last7.map((record) => record.completionRate);
     while (rates.length < 7) rates.unshift(0);
-    setWeekData(rates.slice(-7));
+    return rates.slice(-7);
+  }, [history, today]);
 
-    // 模块统计
-    if (today) {
-      const modules: ModuleStat[] = [
-        { label: '早起', icon: '⏰', completed: 0, total: 0 },
-        { label: '久坐', icon: '🪑', completed: 0, total: 0 },
-        { label: '提肛', icon: '🎯', completed: 0, total: 0 },
-        { label: '断电', icon: '🔌', completed: 0, total: 0 },
-        { label: '冥想', icon: '🧘', completed: 0, total: 0 },
-      ];
+  const moduleStats = useMemo(
+    () => (today ? buildModuleStats([...history, today], { cups: health.waterCups, goal: health.waterGoal }) : []),
+    [today, history, health.waterCups, health.waterGoal],
+  );
 
-      const allRecords = [...history, today];
-      const total = allRecords.length;
-
-      allRecords.forEach((record) => {
-        record.items.forEach((item) => {
-          if (item.status !== 'completed') return;
-          if (item.id === 'alarm') modules[0].completed++;
-          if (item.id === 'sedentary') modules[1].completed++;
-          if (item.id === 'kegel') modules[2].completed++;
-          if (item.id === 'shutdown') modules[3].completed++;
-          if (item.id === 'meditate') modules[4].completed++;
-        });
-      });
-
-      modules.forEach((m) => (m.total = total));
-      setModuleStats(modules);
-
-      // 计算成就
-      const totalDays = history.length + (today ? 1 : 0);
-      const unlockedAchievements = ACHIEVEMENTS.map((a) => ({
-        ...a,
-        unlocked: a.condition({ streakDays, totalDays, moduleStats: modules }),
-      }));
-      setAchievements(unlockedAchievements);
-    }
-  }, [today, history, initToday, streakDays, customHabits]);
+  const achievements = useMemo(() => {
+    if (!today) return [];
+    const days = history.length + 1;
+    return ACHIEVEMENTS.map((item) => ({
+      ...item,
+      unlocked: item.condition({ streakDays, totalDays: days, moduleStats }),
+    }));
+  }, [today, history, streakDays, moduleStats]);
 
   const dayLabels = ['一', '二', '三', '四', '五', '六', '日'];
   const totalDays = history.length + (today ? 1 : 0);
+  const { standCount, waterCups, waterGoal } = health;
+  const activity = summarizeActivity(today?.items);
+  const activityCaption = activity.checkedIn ? '已打卡' : '未打卡';
 
   // 合并历史记录（今天的在前面）
   const allRecords = today ? [today, ...history] : history;
@@ -95,6 +120,43 @@ export default function StatsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-center">统计</h1>
+
+      {/* 今日健康：站起、喝水、活动 */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="min-w-0 rounded-xl bg-[#1e2a4a] px-1.5 py-3 text-center">
+          <p className="text-xs text-[#8892a4]">久坐</p>
+          <p className="mt-1 truncate text-2xl font-bold leading-none text-[#f5a623] tabular-nums">{standCount}</p>
+          <p className="mt-1.5 text-[10px] leading-tight text-[#8892a4]">今日站起</p>
+        </div>
+        <div className="min-w-0 rounded-xl bg-[#1e2a4a] px-1.5 py-3 text-center">
+          <p className="text-xs text-[#8892a4]">喝水</p>
+          <p className="mt-1 truncate text-2xl font-bold leading-none text-[#4ecdc4] tabular-nums">
+            {waterCups}
+            <span className="text-sm font-medium text-[#8892a4]">/{waterGoal}</span>
+          </p>
+          <p className="mt-1.5 text-[10px] leading-tight text-[#8892a4]">今日杯数</p>
+        </div>
+        <div className="min-w-0 rounded-xl bg-[#1e2a4a] px-1.5 py-3 text-center">
+          <p className="text-xs text-[#8892a4]">活动</p>
+          <p
+            className={`mt-1 truncate text-2xl font-bold leading-none tabular-nums ${
+              activity.checkedIn ? 'text-[#4ecdc4]' : 'text-[#8892a4]'
+            }`}
+          >
+            {activity.completed}
+            {activity.total > 0 && (
+              <span className="text-sm font-medium text-[#8892a4]">/{activity.total}</span>
+            )}
+          </p>
+          <p
+            className={`mt-1.5 text-[10px] leading-tight ${
+              activity.checkedIn ? 'text-[#4ecdc4]' : 'text-[#8892a4]'
+            }`}
+          >
+            {activityCaption}
+          </p>
+        </div>
+      </div>
 
       {/* 核心指标 */}
       <div className="flex gap-3">
@@ -160,20 +222,21 @@ export default function StatsPage() {
         <div className="space-y-3">
           {moduleStats.map((stat) => {
             const rate = stat.total > 0 ? Math.round((stat.completed / stat.total) * 100) : 0;
+            const detail = stat.label === '喝水'
+              ? `${stat.completed}/${stat.total} 杯 (${rate}%)`
+              : `${stat.completed}/${stat.total} (${rate}%)`;
             return (
               <div key={stat.label}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm">
                     {stat.icon} {stat.label}
                   </span>
-                  <span className="text-xs text-[#8892a4]">
-                    {stat.completed}/{stat.total} ({rate}%)
-                  </span>
+                  <span className="text-xs text-[#8892a4]">{detail}</span>
                 </div>
                 <div className="h-2 rounded-full bg-[#2a3a5c] overflow-hidden">
                   <div
                     className="h-full rounded-full bg-[#4ecdc4] transition-all duration-500"
-                    style={{ width: `${rate}%` }}
+                    style={{ width: `${Math.min(rate, 100)}%` }}
                   />
                 </div>
               </div>
@@ -194,7 +257,7 @@ export default function StatsPage() {
 
         {showHistory && (
           <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
-            {allRecords.slice(0, 30).map((record, index) => (
+            {allRecords.slice(0, 30).map((record) => (
               <div
                 key={record.date}
                 className="flex items-center justify-between p-2 bg-[#16213e] rounded-lg text-xs"
