@@ -144,7 +144,11 @@ export function speakChinese(text: string, onFail?: () => void): boolean {
   const synth = window.speechSynthesis;
   const token = ++speechToken;
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.voice = voice as SpeechSynthesisVoice;
+  try {
+    utterance.voice = voice as SpeechSynthesisVoice;
+  } catch {
+    // 声线对象不被这次朗读接受时，仍用 zh-CN 朗读这句。
+  }
   utterance.lang = voice.lang || 'zh-CN';
   utterance.rate = 1;
   utterance.pitch = 1;

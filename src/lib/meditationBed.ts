@@ -107,6 +107,7 @@ export class MeditationBed {
     window.clearTimeout(this.trackTimer);
     this.audio?.pause();
     this.stopPad(true);
+    void this.ctx?.suspend().catch(() => {});
   }
 
   dispose() {
