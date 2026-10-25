@@ -112,7 +112,6 @@ export default function StatsPage() {
   const totalDays = history.length + (today ? 1 : 0);
   const { standCount, waterCups, waterGoal } = health;
   const activity = summarizeActivity(today?.items);
-  const activityValue = activity.total > 0 ? `${activity.completed}/${activity.total}` : '0';
   const activityCaption = activity.checkedIn ? '已打卡' : '未打卡';
 
   // 合并历史记录（今天的在前面）
@@ -144,7 +143,10 @@ export default function StatsPage() {
               activity.checkedIn ? 'text-[#4ecdc4]' : 'text-[#8892a4]'
             }`}
           >
-            {activityValue}
+            {activity.completed}
+            {activity.total > 0 && (
+              <span className="text-sm font-medium text-[#8892a4]">/{activity.total}</span>
+            )}
           </p>
           <p
             className={`mt-1.5 text-[10px] leading-tight ${
