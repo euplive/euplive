@@ -41,6 +41,11 @@ self.addEventListener('fetch', event => {
   // 只处理GET请求
   if (event.request.method !== 'GET') return;
 
+  // 冥想 mp3 要靠浏览器自己的 Range 请求才能边下边播。
+  // 这里若把整文件缓存后再应答 Range，手机会直接没声音。
+  const path = new URL(event.request.url).pathname;
+  if (path.startsWith('/audio/')) return;
+
   event.respondWith(
     caches.match(event.request)
       .then(response => {

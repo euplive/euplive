@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { MeditationBed, type MeditationBedMode } from '@/lib/meditationBed';
 import { useScheduleStore } from '@/store/scheduleStore';
 
 type MeditationMode = 'breathing' | 'guided' | 'free';
@@ -27,43 +28,36 @@ export default function MeditatePage() {
   const [phaseElapsed, setPhaseElapsed] = useState(0);
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [musicPlaying, setMusicPlaying] = useState(false);
+  const [bedMode, setBedMode] = useState<MeditationBedMode>('track');
   const [volume, setVolume] = useState(0.5);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const bedRef = useRef<MeditationBed | null>(null);
+  const sessionStartedRef = useRef(false);
 
   const totalSeconds = duration * 60;
   const currentPhaseConfig = phaseConfig[phase];
   const totalProgress = (totalElapsed / totalSeconds) * 100;
 
-  // 初始化音频
   useEffect(() => {
-    audioRef.current = new Audio('/audio/meditation-rest-now.mp3');
-    audioRef.current.loop = true;
-    audioRef.current.volume = volume;
+    const bed = bedRef.current ?? new MeditationBed(setBedMode);
+    bedRef.current = bed;
+    bed.mount();
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      bed.dispose();
+      if (bedRef.current === bed) bedRef.current = null;
     };
   }, []);
 
-  // 音量控制
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-    }
+    bedRef.current?.setVolume(volume);
   }, [volume]);
 
-  // 冥想开始/停止时控制音乐
   useEffect(() => {
-    if (!audioRef.current) return;
-    if (isRunning && musicPlaying) {
-      audioRef.current.play().catch(() => {});
-    } else if (!isRunning) {
-      audioRef.current.pause();
+    // 试听发生在还没开始的时候，不能跟暂停冥想混在一起关掉。
+    if (!isRunning && sessionStartedRef.current) {
+      bedRef.current?.pause();
     }
-  }, [isRunning, musicPlaying]);
+  }, [isRunning]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -94,39 +88,48 @@ export default function MeditatePage() {
     return () => clearInterval(timerRef.current);
   }, [isRunning, mode, phaseIndex, totalSeconds]);
 
+  const liveBed = () => {
+    if (!bedRef.current) bedRef.current = new MeditationBed(setBedMode);
+    return bedRef.current;
+  };
+
   const handleStart = () => {
+    sessionStartedRef.current = true;
     setIsRunning(true);
     setMusicPlaying(true);
     setTotalElapsed(0);
     setPhaseElapsed(0);
     setPhaseIndex(0);
     setPhase('inhale');
+    liveBed().play();
   };
 
   const handleStop = () => {
     setIsRunning(false);
     clearInterval(timerRef.current);
+    bedRef.current?.pause();
   };
 
   const handleComplete = () => {
     handleStop();
     setMusicPlaying(false);
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
+    bedRef.current?.pause();
     completeItem('meditate');
   };
 
   const toggleMusic = () => {
-    if (!audioRef.current) return;
     if (musicPlaying) {
-      audioRef.current.pause();
+      bedRef.current?.pause();
       setMusicPlaying(false);
-    } else {
-      audioRef.current.play().catch(() => {});
-      setMusicPlaying(true);
+      return;
     }
+    setMusicPlaying(true);
+    liveBed().play();
+  };
+
+  const resumeMeditation = () => {
+    setIsRunning(true);
+    if (musicPlaying) liveBed().play();
   };
 
   const formatTime = (s: number) => {
@@ -198,8 +201,14 @@ export default function MeditatePage() {
               <div className="flex items-center gap-2">
                 <span className="text-lg">🎵</span>
                 <div>
-                  <p className="text-sm text-[#f0f0f0]">Rest Now</p>
-                  <p className="text-xs text-[#8892a4]">by Eugenio Mininni · 5:00 · Ambient</p>
+                  <p className="text-sm text-[#f0f0f0]">
+                    {bedMode === 'pad' ? '柔和铺底' : 'Rest Now'}
+                  </p>
+                  <p className="text-xs text-[#8892a4]">
+                    {bedMode === 'pad'
+                      ? '原音频未能播放，已改用环境铺底'
+                      : 'by Eugenio Mininni · 5:00 · Ambient'}
+                  </p>
                 </div>
               </div>
               <button
@@ -226,6 +235,7 @@ export default function MeditatePage() {
               />
               <span className="text-xs text-[#8892a4] w-8">{Math.round(volume * 100)}%</span>
             </div>
+            <p className="text-xs text-[#8892a4] mt-2">点「开始冥想」后自动播放，可随时关闭。</p>
           </div>
 
           {/* 开始按钮 */}
@@ -311,6 +321,7 @@ export default function MeditatePage() {
               }`}
             >
               🎵 {musicPlaying ? '关闭音乐' : '播放音乐'}
+              {bedMode === 'pad' ? ' · 铺底' : ''}
             </button>
             <input
               type="range"
@@ -334,7 +345,7 @@ export default function MeditatePage() {
               </button>
             ) : totalElapsed < totalSeconds ? (
               <button
-                onClick={() => setIsRunning(true)}
+                onClick={resumeMeditation}
                 className="rounded-xl bg-[#f5a623] px-8 py-3 text-[#1a1a2e] font-medium"
               >
                 继续
