@@ -1,7 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
+import {
+  KEGEL_PHASE_LINE,
+  cancelChineseVoice,
+  primeChineseVoice,
+  speakChinese,
+  type KegelSpokenPhase,
+} from '@/lib/chineseVoice';
 
 interface KegelSettings {
   rounds: number;        // 轮次
@@ -110,6 +116,17 @@ function playPhaseSound(phase: 'inhale' | 'hold' | 'exhale') {
   }
 }
 
+let lastCuePhase: KegelSpokenPhase | null = null;
+let lastCueAt = 0;
+
+function cuePhase(phase: KegelSpokenPhase) {
+  const now = Date.now();
+  if (lastCuePhase === phase && now - lastCueAt < 400) return;
+  lastCuePhase = phase;
+  lastCueAt = now;
+  if (!speakChinese(KEGEL_PHASE_LINE[phase])) playPhaseSound(phase);
+}
+
 // 完成提示音
 function playCompleteSound() {
   try {
@@ -142,7 +159,6 @@ function playCompleteSound() {
 }
 
 export default function KegelPage() {
-  const router = useRouter();
   const [settings, setSettings] = useState<KegelSettings>(DEFAULT_SETTINGS);
   const [phase, setPhase] = useState<Phase>('ready');
   const [currentRound, setCurrentRound] = useState(0);
@@ -168,8 +184,10 @@ export default function KegelPage() {
     }
 
     bgMusicRef.current = createBackgroundMusic();
+    primeChineseVoice();
 
     return () => {
+      cancelChineseVoice();
       if (bgMusicRef.current) {
         bgMusicRef.current.stop();
       }
@@ -213,10 +231,10 @@ export default function KegelPage() {
           // 切换阶段
           if (phase === 'inhale') {
             setPhase('hold');
-            playPhaseSound('hold');
+            cuePhase('hold');
           } else if (phase === 'hold') {
             setPhase('exhale');
-            playPhaseSound('exhale');
+            cuePhase('exhale');
           } else if (phase === 'exhale') {
             if (currentRound < settings.rounds) {
               setPhase('rest');
@@ -230,7 +248,7 @@ export default function KegelPage() {
             // 开始下一轮
             setCurrentRound((r) => r + 1);
             setPhase('inhale');
-            playPhaseSound('inhale');
+            cuePhase('inhale');
             return 0;
           }
           return 0;
@@ -249,6 +267,7 @@ export default function KegelPage() {
 
   const handleComplete = () => {
     setPhase('completed');
+    cancelChineseVoice();
     if (bgMusicRef.current) {
       bgMusicRef.current.stop();
     }
@@ -268,10 +287,11 @@ export default function KegelPage() {
     if (bgMusicRef.current) {
       bgMusicRef.current.start();
     }
-    playPhaseSound('inhale');
+    cuePhase('inhale');
   };
 
   const stopExercise = () => {
+    cancelChineseVoice();
     if (bgMusicRef.current) {
       bgMusicRef.current.stop();
     }

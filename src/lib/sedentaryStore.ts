@@ -252,7 +252,7 @@ export function consumeNaturalTransition(phase: SedentaryView['phase']): Transit
   return null;
 }
 
-export function updateSettings(next: SedentarySettings) {
+export function updateSettings(next: SedentarySettings): boolean {
   const settings: SedentarySettings = {
     ...next,
     workDuration: snapMinutes(next.workDuration, 20, 60, 5, DEFAULT_SETTINGS.workDuration),
@@ -265,18 +265,21 @@ export function updateSettings(next: SedentarySettings) {
   if (!timer || dayKey(timer.startTimestamp) !== dayKey(now)) {
     if (timer) storageRemove(STORAGE_KEY);
     publish();
-    return;
+    return false;
   }
 
   const result = rebaseDurations(timer, now, settings.workDuration, settings.standDuration);
   writeTimer(result.persisted);
+  let enteredStanding = false;
   if (result.enteredStanding && acknowledgedPhase === 'working') {
     acknowledgedPhase = 'standing';
     bumpStandCount(now);
+    enteredStanding = true;
   } else {
     acknowledgedPhase = result.snapshot.phase;
   }
   publish();
+  return enteredStanding;
 }
 
 export function beginWorkRound() {

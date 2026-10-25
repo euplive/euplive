@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { STAND_UP_LINE, primeChineseVoice, speakChinese } from '@/lib/chineseVoice';
 import {
   beginWorkRound,
   consumeNaturalTransition,
@@ -40,12 +41,19 @@ function playInspirationalSound() {
       });
     }
 
-    if ('vibrate' in navigator) {
-      navigator.vibrate([500, 200, 500, 200, 500]);
-    }
   } catch {
     // 浏览器拦截音频时忽略
   }
+}
+
+function announceStandUp() {
+  try {
+    if ('vibrate' in navigator) navigator.vibrate([500, 200, 500, 200, 500]);
+  } catch {
+    // 震动被系统拒绝时忽略
+  }
+  const spoken = speakChinese(STAND_UP_LINE, () => playInspirationalSound());
+  if (!spoken) playInspirationalSound();
 }
 
 function playSitDownSound() {
@@ -138,12 +146,16 @@ export default function SedentaryPage() {
   }, []);
 
   useEffect(() => {
+    primeChineseVoice();
+  }, []);
+
+  useEffect(() => {
     if (!view.ready) return;
     // 手动改时长、提前站立、重开一轮会事先同步阶段，这里只处理秒针走到的切换。
     const kind = consumeNaturalTransition(view.phase);
     if (kind === 'stand-up') {
-      playInspirationalSound();
-      sendNotify('🧍 起身时间到！', `工作了${getSnapshot().settings.workDuration}分钟，站起来活动一下！`);
+      announceStandUp();
+      sendNotify('🧍 该站起来了', STAND_UP_LINE);
       recordStandUp();
     } else if (kind === 'sit-down') {
       playSitDownSound();
@@ -225,12 +237,21 @@ export default function SedentaryPage() {
           </p>
 
           {phase === 'standing' && (
-            <Link
-              href="/kegel"
-              className="mt-4 block w-full rounded-xl bg-[#f5a623]/20 py-2 text-sm text-[#f5a623]"
-            >
-              🎯 去做提肛运动 →
-            </Link>
+            <div className="mt-4 space-y-2">
+              <p className="text-sm text-[#f0f0f0]">{STAND_UP_LINE}</p>
+              <Link
+                href="/meditate"
+                className="block w-full rounded-xl bg-[#f5a623] py-3 text-sm font-bold text-[#1a1a2e]"
+              >
+                去做冥想 →
+              </Link>
+              <Link
+                href="/kegel"
+                className="block w-full rounded-xl bg-[#f5a623]/20 py-2 text-sm text-[#f5a623]"
+              >
+                🎯 去做提肛运动 →
+              </Link>
+            </div>
           )}
         </div>
       )}
@@ -300,11 +321,14 @@ export default function SedentaryPage() {
               {phase === 'working' && (
                 <button
                   type="button"
-                  onClick={startStanding}
-                  className="flex-1 rounded-xl bg-[#4ecdc4] py-3 text-[#1a1a2e] font-bold"
-                >
-                  提前站立
-                </button>
+                onClick={() => {
+                  startStanding();
+                  announceStandUp();
+                }}
+                className="flex-1 rounded-xl bg-[#4ecdc4] py-3 text-[#1a1a2e] font-bold"
+              >
+                提前站立
+              </button>
               )}
               <button
                 type="button"
@@ -319,7 +343,13 @@ export default function SedentaryPage() {
       </div>
 
       {running && (
-        <DurationCard settings={settings} running onChange={updateSettings} />
+        <DurationCard
+          settings={settings}
+          running
+          onChange={(next) => {
+            if (updateSettings(next)) announceStandUp();
+          }}
+        />
       )}
 
       <div className="rounded-xl bg-[#f5a623]/10 p-4 space-y-1">
