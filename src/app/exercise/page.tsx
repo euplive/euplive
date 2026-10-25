@@ -53,7 +53,7 @@ export default function ExercisePage() {
   const progress = step ? (elapsed / step.duration) * 100 : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-6">
       <h1 className="text-xl font-bold text-center">锻炼引导</h1>
 
       {/* Tab 切换 */}
