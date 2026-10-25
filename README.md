@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# euplive
 
-## Getting Started
+天天向上：一个给自己用的每日自律 / 习惯工具。把从早起到入睡的一天排成日程，打卡、计时，并在浏览器里记下连续天数和完成率。
 
-First, run the development server:
+线上地址：[https://euplive.vercel.app](https://euplive.vercel.app)
+
+界面是中文、手机宽度的 PWA。日程和习惯存在本机（localStorage），没有账号。
+
+## 现在有什么
+
+底部导航：
+
+- **首页**：今日时间线、连续自律天数、完成率，可添加自定义习惯
+- **Eup 钟**：专注 / 短休息 / 长休息计时（默认 35 / 5 / 15 分钟）
+- **喝水**：按杯记录今日饮水量
+- **统计**：近 7 天完成率、分项次数、成就
+- **设置**：作息时间与浏览器通知
+
+默认日程里还有这些页面：早起闹钟、久坐提醒（40 分钟工作 + 20 分钟活动）、提肛练习、断电仪式、呼吸冥想。`/exercise`（八段锦、拍拍操）和 `/meals`（一周饮食）也在代码里，底部导航没有入口。
+
+## 本地运行
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 [http://localhost:3000](http://localhost:3000)。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+技术栈：Next.js、React、Tailwind CSS、Zustand。
